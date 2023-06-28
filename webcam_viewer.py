@@ -13,34 +13,14 @@ import numpy as np
 
 
 
-def my_brightness_contrast_LUT(low_val, high_val,gamma=1): 
-
-    _chan = np.arange(256)
-    img_map = np.dstack((_chan,_chan,_chan))
-    
-    if not isinstance(low_val,np.ndarray):
-        inBlack  = low_val*np.array([1.0, 1.0, 1.0], dtype=np.float32)
-        inWhite  = high_val*np.array([1.0, 1.0, 1.0], dtype=np.float32)
-    else:
-        inBlack  = low_val.astype('float32')
-        inWhite  = high_val.astype('float32')
-    
-    inGamma  = gamma*np.array([1.0, 1.0, 1.0], dtype=np.float32)
-    outBlack = np.array([0, 0, 0], dtype=np.float32)
-    outWhite = np.array([255, 255, 255], dtype=np.float32)
-
-    img_map = np.clip( (img_map - inBlack) / (inWhite - inBlack), 0, 255 )                            
-    img_map = ( img_map ** (1/inGamma) ) *  (outWhite - outBlack) + outBlack
-    img_map = np.clip( img_map, 0, 255).astype(np.uint8)
-    
-    return img_map
-
+def valueToBool(value):
+    return value.lower() == 'true' if isinstance(value, str) else bool(value)
 
 settings = QSettings('./parameters.ini', QSettings.IniFormat)
 frame_width = int(settings.value('CAMERA/frame_width', 1920))
 frame_height = int(settings.value('CAMERA/frame_height', 1080))
 scale_factor = float(settings.value('CAMERA/scale_factor', 1.0))
-flipped_frame = bool(settings.value('CAMERA/flipped_frame', False))
+flipped_frame = valueToBool(settings.value('CAMERA/flipped_frame', False))
 
 camera_num = int(settings.value('CAMERA/camera_num', 0))
 default_file = settings.value('FILE/default_file','./image_out')
@@ -52,7 +32,7 @@ class VideoThread(QThread):
         super().__init__()
         self._run_flag = True
         
-        self.lut = my_brightness_contrast_LUT(0,255)
+        self.lut = self.my_brightness_contrast_LUT(0,255)
         self.fnum = 0
         self.fname = default_file
         self.saving = False
@@ -82,15 +62,37 @@ class VideoThread(QThread):
         self._run_flag = False
         self.wait()
 
+    def my_brightness_contrast_LUT(self, low_val, high_val,gamma=1): 
+
+        _chan = np.arange(256)
+        img_map = np.dstack((_chan,_chan,_chan))
+        
+        if not isinstance(low_val,np.ndarray):
+            inBlack  = low_val*np.array([1.0, 1.0, 1.0], dtype=np.float32)
+            inWhite  = high_val*np.array([1.0, 1.0, 1.0], dtype=np.float32)
+        else:
+            inBlack  = low_val.astype('float32')
+            inWhite  = high_val.astype('float32')
+        
+        inGamma  = gamma*np.array([1.0, 1.0, 1.0], dtype=np.float32)
+        outBlack = np.array([0, 0, 0], dtype=np.float32)
+        outWhite = np.array([255, 255, 255], dtype=np.float32)
+
+        img_map = np.clip( (img_map - inBlack) / (inWhite - inBlack), 0, 255 )                            
+        img_map = ( img_map ** (1/inGamma) ) *  (outWhite - outBlack) + outBlack
+        img_map = np.clip( img_map, 0, 255).astype(np.uint8)
+        
+        return img_map
+
     @pyqtSlot(np.ndarray)
     def update_LUT(self, inputs):
         if len(inputs) == 2:
             low_val,high_val = inputs[0],inputs[1]
-            self.lut = my_brightness_contrast_LUT(low_val,high_val)
+            self.lut = self.my_brightness_contrast_LUT(low_val,high_val)
         if len(inputs) == 6:
             low_val = inputs[::2]
             high_val = inputs[1::2]
-            self.lut = my_brightness_contrast_LUT(low_val,high_val)
+            self.lut = self.my_brightness_contrast_LUT(low_val,high_val)
     
     @pyqtSlot(str)
     def update_output_file(self, fname):
@@ -184,8 +186,8 @@ class App(QWidget):
         grid.addWidget(self.Red_group, 0, 1,1,1)
         grid.addWidget(self.Green_group, 1, 0,1,1)
         grid.addWidget(self.Blue_group, 1, 1,1,1)
-        grid.addWidget(self.Path_button,0,10,1,1)
-        grid.addWidget(self.Save_button,1,10,1,1)
+        grid.addWidget(self.Save_button,0,10,1,1)
+        grid.addWidget(self.Path_button,1,10,1,1)
         
         
         self.All_max.sliderMoved.connect(lambda: self.sliderMoved("All_max"))
