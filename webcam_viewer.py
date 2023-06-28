@@ -4,7 +4,7 @@ from PyQt5.QtWidgets import (QApplication, QCheckBox, QGridLayout, QGroupBox,
                              QMenu, QPushButton, QRadioButton, QVBoxLayout, QWidget, QSlider, QFileDialog)
 from PyQt5.QtGui import QPixmap
 import sys
-
+import time
 import os
 os.environ["OPENCV_VIDEOIO_MSMF_ENABLE_HW_TRANSFORMS"] = "0"
 import cv2
@@ -37,9 +37,12 @@ def my_brightness_contrast_LUT(low_val, high_val,gamma=1):
 
 
 settings = QSettings('./parameters.ini', QSettings.IniFormat)
-frame_width = settings.value('CAMERA/frame_width', 1920)
-frame_height = settings.value('CAMERA/frame_height', 1080)
-camera_num = settings.value('CAMERA/camera_num', 0)
+frame_width = int(settings.value('CAMERA/frame_width', 1920))
+frame_height = int(settings.value('CAMERA/frame_height', 1080))
+scale_factor = float(settings.value('CAMERA/scale_factor', 1.0))
+flipped_frame = bool(settings.value('CAMERA/flipped_frame', False))
+
+camera_num = int(settings.value('CAMERA/camera_num', 0))
 default_file = settings.value('FILE/default_file','./image_out')
 
 class VideoThread(QThread):
@@ -52,6 +55,8 @@ class VideoThread(QThread):
         self.lut = my_brightness_contrast_LUT(0,255)
         self.fnum = 0
         self.fname = default_file
+        self.saving = False
+        self.flipped_frame = flipped_frame
         
         self.cap = cv2.VideoCapture(camera_num,cv2.CAP_MSMF);
         self.cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc('M', 'J', 'P', 'G'))
@@ -61,10 +66,14 @@ class VideoThread(QThread):
     def run(self):
         # capture from web cam
         while self._run_flag:
-            ret, frame = self.cap.read()
-            frame_adj = cv2.LUT(frame,self.lut)
-            if ret:
-                self.change_pixmap_signal.emit(frame_adj.astype('uint8'))
+            if not self.saving:
+                ret, frame = self.cap.read()
+                if self.flipped_frame:
+                    frame = frame[::-1,::-1]
+                frame_adj = cv2.LUT(frame,self.lut)
+                if ret:
+                    self.change_pixmap_signal.emit(frame_adj.astype('uint8'))
+        
         # shut down capture system
         self.cap.release()
 
@@ -90,6 +99,24 @@ class VideoThread(QThread):
         
     @pyqtSlot()
     def capture_frame(self):
+        self.saving = True
+        ret, frame = self.cap.read()
+        if self.flipped_frame:
+            frame = frame[::-1,::-1]
+
+        frame_adj = cv2.LUT(frame,self.lut)
+        _output_file = self.fname+'_%04d.jpg'%self.fnum
+        while os.path.isfile(_output_file):
+            self.fnum+=1
+            _output_file =  self.fname+'_%04d.jpg'%self.fnum
+        
+        cv2.imwrite(_output_file,frame_adj, [cv2.IMWRITE_JPEG_QUALITY, 100])
+        cv2.imwrite(self.fname+'_%04d_base.jpg'%self.fnum,frame, [cv2.IMWRITE_JPEG_QUALITY, 100])
+        self.fnum+=1
+        self.saving = False
+    
+    def save_frame(self):
+        
         ret, frame = self.cap.read()
         frame_adj = cv2.LUT(frame,self.lut)
         _output_file = self.fname+'_%04d.jpg'%self.fnum
@@ -100,7 +127,6 @@ class VideoThread(QThread):
         cv2.imwrite(_output_file,frame_adj, [cv2.IMWRITE_JPEG_QUALITY, 100])
         cv2.imwrite(self.fname+'_%04d_base.jpg'%self.fnum,frame, [cv2.IMWRITE_JPEG_QUALITY, 100])
         self.fnum+=1
-    
 
 class App(QWidget):
     update_LUT = pyqtSignal(np.ndarray)
@@ -113,8 +139,8 @@ class App(QWidget):
         
 
         
-        self.disply_width = frame_width
-        self.display_height = frame_height
+        self.disply_width = int(frame_width*scale_factor)
+        self.display_height = int(frame_width*scale_factor)
         # create the label that holds the image
         self.image_label = QLabel(self)
         self.image_label.resize(self.disply_width, self.display_height)
