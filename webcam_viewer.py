@@ -22,7 +22,7 @@ frame_height = int(settings.value('CAMERA/frame_height', 1080))
 scale_factor = float(settings.value('CAMERA/scale_factor', 1.0))
 flipped_frame = valueToBool(settings.value('CAMERA/flipped_frame', False))
 
-camera_num = int(settings.value('CAMERA/camera_num', 0))
+camera_num = int(settings.value('CAMERA/camera_num', 1))
 default_file = settings.value('FILE/default_file','./image_out')
 
 class VideoThread(QThread):
